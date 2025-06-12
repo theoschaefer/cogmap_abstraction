@@ -183,30 +183,28 @@ l_gcm_results <- map(l_loo_gcm, "result")
 map(l_loo_gcm, "error") %>% reduce(c)
 
 
-# Prototype: Multivariate Gaussian ----------------------------------------
+
+# Prototype: Multivariate Gaussian ---------------------------------------
 
 l_tbl_both <- split(tbl_both, tbl_both$participant)
-l_tbl_both_agg <- split(tbl_both_agg, tbl_both_agg$participant)
 
+stan_gaussian <- write_gaussian_naive_bayes_stan()
+mod_gaussian <- cmdstan_model(stan_gaussian)
+safe_gaussian <- safely(bayesian_gaussian_naive_bayes)
 
-stan_multi <- write_gaussian_multi_bayes_stan()
-mod_multi <- cmdstan_model(stan_multi)
-safe_multi <- safely(bayesian_gaussian_multi_bayes)
-
-l_loo_multi <- furrr::future_map2(
-  l_tbl_both, l_tbl_both_agg, safe_multi, 
+l_loo_gaussian <- furrr::future_map2(
+  l_tbl_both, l_tbl_both_agg, safe_gaussian, 
   l_stan_params = l_stan_params,
-  mod_multi = mod_multi, 
+  mod_gaussian = mod_gaussian, 
   .progress = TRUE
 )
-saveRDS(l_loo_multi, file = "data/infpro_task-cat_beh/multi-loos.RDS")
-l_loo_multi <- readRDS(file = "data/infpro_task-cat_beh/multi-loos.RDS")
+saveRDS(l_loo_gaussian, file = "data/infpro_task-cat_beh/gaussian-loos.RDS")
+l_loo_gaussian <- readRDS(file = "data/infpro_task-cat_beh/gaussian-loos.RDS")
 
 # ok
-l_multi_results <- map(l_loo_multi, "result")
+l_gaussian_results <- map(l_loo_gaussian, "result")
 # not ok
-map(l_loo_multi, "error") %>% reduce(c)
-
+map(l_loo_gaussian, "error") %>% reduce(c)
 
 
 # Model Weights -----------------------------------------------------------
@@ -214,7 +212,7 @@ map(l_loo_multi, "error") %>% reduce(c)
 safe_weights <- safely(loo_model_weights)
 
 l_loo_weights <- pmap(
-  list(l_gcm_results, l_multi_results), # 
+  list(l_gcm_results, l_gaussian_results), # 
   ~ safe_weights(list(..1, ..2)), 
   method = "stacking"
 )
@@ -266,8 +264,7 @@ ggplot(tbl_weights, aes(weight_prototype, prop_correct)) +
 
 # Distribution of Model Parameters ----------------------------------------
 
-# search_words <- c("gcm-summary", "gaussian-summary", "multi-model-summary")[1:2]
-search_words <- c("gcm-summary", "prototype-summary", "gaussian-summary", "multi-model-summary")[1:2]
+search_words <- c("gcm-summary", "gaussian-summary")
 model_dir <- dir("data/infpro_task-cat_beh/models/")
 path_summary <- map(search_words, ~ str_c("data/infpro_task-cat_beh/models/", model_dir[startsWith(model_dir, .x)]))
 
@@ -299,9 +296,9 @@ map(l_summary_prototype, ~ .x[str_starts(.x$variable, "b|c"), ]) %>%
     y = "Nr. Participants"
   )
 
-# 1D Gaussian
+# Gaussian
 
-l_summary_gaussian <- map(path_summary[[3]], readRDS)
+l_summary_gaussian <- map(path_summary[[2]], readRDS)
 tbl_summaries <- l_summary_gaussian %>% reduce(rbind)
 mean_representation <- function(cat, tbl_summary){
   var1 <- str_c("mu1[", cat, "]")
@@ -383,40 +380,3 @@ tbl_biases %>%
   geom_point() +
   facet_wrap(~ variable) +
   theme_bw()
-
-
-
-
-# Compare Model Weights to c Parameter of RMC -----------------------------
-
-tbl_rmc <- read_csv("data/infpro_task-cat_beh/tbl-results-transfer.csv")
-tbl_cs <- tbl_rmc %>% filter(rank == 1) %>% mutate(participant = as.character(id))
-
-
-tbl_cs <- tbl_cs %>% left_join(tbl_weights, by = "participant")
-tbl_labels = tibble(
-  Metric = c("c", "nk"), 
-  Value = c(.55, 105), 
-  c = c(cor(tbl_cs$c, tbl_cs$weight_prototype), cor(tbl_cs$nk, tbl_cs$weight_prototype))
-)
-
-tbl_cs_long <- tbl_cs %>% 
-  pivot_longer(cols = c(c, nk), names_to = "Metric", values_to = "Value")
-
-ggplot(tbl_cs_long, aes(weight_prototype, Value, group = Metric)) +
-  geom_point(aes(color = Metric)) +
-  geom_smooth(method = "lm", se = TRUE, alpha = .1, aes(color = Metric)) +
-  geom_label(data = tbl_labels, aes(x = .75, label = str_c("r = ", round(c, 2)))) +
-  facet_wrap(~ Metric, scales = "free_y") +
-  scale_color_viridis_d() +
-  theme_bw() +
-  labs(x = "Model Weight Prototype", y = "RMC Metric")
-
-
-ggplot(tbl_cs, aes(c)) + 
-  geom_histogram(binwidth = .015, fill = "#66CCFF", color = "white") +
-  theme_bw() +
-  scale_y_continuous(breaks = seq(0, 15, by = 5)) +
-  labs(x = "c parameter of RMC", y = "Nr. Participants") +
-  coord_cartesian(xlim = c(0, 1))
-  
