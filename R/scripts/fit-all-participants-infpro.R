@@ -237,9 +237,53 @@ l_gaussian_results <- map(l_loo_gaussian, "result")
 map(l_loo_gaussian, "error") %>% reduce(c)
 
 
-# Model Weights -----------------------------------------------------------
+# Prototype: Multi with Correlations
+
+if (!is_saved) {
+  stan_multi <- write_gaussian_multi_bayes_stan()
+  mod_multi <- cmdstan_model(stan_multi)
+  safe_multi <- safely(bayesian_gaussian_multi_bayes)
+  
+  n_workers_available <- parallel::detectCores()
+  plan(multisession, workers = n_workers_available - 2)
+  
+  l_loo_multi <- furrr::future_map2(
+    l_tbl_both, l_tbl_both_agg, safe_multi, 
+    l_stan_params = l_stan_params,
+    mod_multi = mod_multi, 
+    .progress = TRUE
+  )
+  plan("sequential")
+  
+  saveRDS(l_loo_multi, file = "data/infpro_task-cat_beh/multi-loos.RDS")
+  
+} else {
+  l_loo_multi <- readRDS(file = "data/infpro_task-cat_beh/multi-loos.RDS")
+  
+}
+
+# ok
+l_multi_results <- map(l_loo_multi, "result")
+# not ok
+map(l_loo_multi, "error") %>% reduce(c)
+
+
+
+# Model Weights Prototype 1 vs. Prototype 2 ------------------------------
 
 safe_weights <- safely(loo_model_weights)
+
+l_loo_weights_prototype_comparison <- pmap(
+  list(l_gaussian_results, l_multi_results), # 
+  ~ safe_weights(list(..1, ..2)), 
+  method = "stacking"
+)
+l_loo_weights_prototype_comparison
+
+
+
+# Model Weights Exemplar vs. Prototype ------------------------------------
+
 
 l_loo_weights <- pmap(
   list(l_gcm_results, l_gaussian_results), # 
