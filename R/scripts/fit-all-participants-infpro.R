@@ -18,6 +18,12 @@ if (!dir.exists("data/infpro_task-cat_beh/models/")) dir.create("data/infpro_tas
 if (!dir.exists("data/infpro_task-cat_beh/model-plots/")) dir.create("data/infpro_task-cat_beh/model-plots/")
 if (!dir.exists("data/infpro_task-cat_beh/figures/")) dir.create("data/infpro_task-cat_beh/figures/")
 
+
+# Fit Models or Load Saved Results? ---------------------------------------
+
+is_saved <- c(TRUE, FALSE)[1]
+
+
 # Load Data and Preprocess Them -------------------------------------------
 
 
@@ -52,16 +58,21 @@ sd_d2i <- sd(tbl_both$d2i)
 
 tbl_train <- tbl_both %>% filter(session == "train")
 tbl_transfer <- tbl_both %>% filter(session == "transfer")
-saveRDS(tbl_both, file = "data/infpro_task-cat_beh/tbl_both.RDS")
-saveRDS(tbl_train, file = "data/infpro_task-cat_beh/tbl_train.RDS")
-saveRDS(tbl_transfer, file = "data/infpro_task-cat_beh/tbl_transfer.RDS")
-write_csv(tbl_train, "data/infpro_task-cat_beh/tbl_train.csv")
-write_csv(tbl_transfer, "data/infpro_task-cat_beh/tbl_transfer.csv")
+
+if (!is_saved) {
+  
+  # save train, transfer, and combined data as rds and csv
+  
+  saveRDS(tbl_both, file = "data/infpro_task-cat_beh/tbl_both.RDS")
+  saveRDS(tbl_train, file = "data/infpro_task-cat_beh/tbl_train.RDS")
+  saveRDS(tbl_transfer, file = "data/infpro_task-cat_beh/tbl_transfer.RDS")
+  
+  write_csv(tbl_train, file = "data/infpro_task-cat_beh/tbl_train.csv")
+  write_csv(tbl_transfer, file = "data/infpro_task-cat_beh/tbl_transfer.csv")
+  write_csv(tbl_both, file = "data/infpro_task-cat_beh/tbl_both.csv")
+}
 
 
-write_csv(tbl_train, file = "data/infpro_task-cat_beh/tbl_train.csv")
-write_csv(tbl_transfer, file = "data/infpro_task-cat_beh/tbl_transfer.csv")
-write_csv(tbl_both, file = "data/infpro_task-cat_beh/tbl_both.csv")
 
 tbl_stim_id <- tbl_train %>% count(d1i, d2i, d1i_z, d2i_z, category) %>%
   arrange(d1i, d2i) %>% mutate(stim_id = seq_along(d1i + d2i)) %>%
@@ -146,6 +157,12 @@ tbl_transfer_agg$category_int <- as.numeric(factor(
 ))
 
 
+
+# General settings --------------------------------------------------------
+
+
+# mcmc settings for all models
+
 l_stan_params <- list(
   n_samples = 1000,
   n_warmup = 250,
@@ -153,29 +170,34 @@ l_stan_params <- list(
 )
 
 
-n_workers_available <- parallel::detectCores()
-plan(multisession, workers = n_workers_available / 2)
-
-
 # GCM ---------------------------------------------------------------------
 
 tbl_both_agg <- rbind(tbl_train_agg, tbl_transfer_agg)
 l_tbl_both_agg <- split(tbl_both_agg, tbl_both_agg$participant)
 
-stan_gcm <- write_gcm_stan_file_predict()
-mod_gcm <- cmdstan_model(stan_gcm)
-safe_gcm <- safely(bayesian_gcm)
+if (!is_saved) {
+  stan_gcm <- write_gcm_stan_file_predict()
+  mod_gcm <- cmdstan_model(stan_gcm)
+  safe_gcm <- safely(bayesian_gcm)
+  
+  n_workers_available <- parallel::detectCores()
+  plan(multisession, workers = n_workers_available - 2)
+  
+  options(warn = -1)
+  l_loo_gcm <- furrr::future_map(
+    l_tbl_both_agg, safe_gcm, 
+    l_stan_params = l_stan_params, 
+    mod_gcm = mod_gcm, 
+    .progress = TRUE
+  )
+  options(warn = 0)
+  plan("sequential")
+  saveRDS(l_loo_gcm, file = "data/infpro_task-cat_beh/gcm-loos.RDS")
+  
+} else {
+  l_loo_gcm <- readRDS(file = "data/infpro_task-cat_beh/gcm-loos.RDS")
+}
 
-options(warn = -1)
-l_loo_gcm <- furrr::future_map(
-  l_tbl_both_agg, safe_gcm, 
-  l_stan_params = l_stan_params, 
-  mod_gcm = mod_gcm, 
-  .progress = TRUE
-)
-options(warn = 0)
-saveRDS(l_loo_gcm, file = "data/infpro_task-cat_beh/gcm-loos.RDS")
-l_loo_gcm <- readRDS(file = "data/infpro_task-cat_beh/gcm-loos.RDS")
 
 # ok
 l_gcm_results <- map(l_loo_gcm, "result")
@@ -188,18 +210,26 @@ map(l_loo_gcm, "error") %>% reduce(c)
 
 l_tbl_both <- split(tbl_both, tbl_both$participant)
 
-stan_gaussian <- write_gaussian_naive_bayes_stan()
-mod_gaussian <- cmdstan_model(stan_gaussian)
-safe_gaussian <- safely(bayesian_gaussian_naive_bayes)
-
-l_loo_gaussian <- furrr::future_map2(
-  l_tbl_both, l_tbl_both_agg, safe_gaussian, 
-  l_stan_params = l_stan_params,
-  mod_gaussian = mod_gaussian, 
-  .progress = TRUE
-)
-saveRDS(l_loo_gaussian, file = "data/infpro_task-cat_beh/gaussian-loos.RDS")
-l_loo_gaussian <- readRDS(file = "data/infpro_task-cat_beh/gaussian-loos.RDS")
+if (!is_saved) {
+  stan_gaussian <- write_gaussian_naive_bayes_stan()
+  mod_gaussian <- cmdstan_model(stan_gaussian)
+  safe_gaussian <- safely(bayesian_gaussian_naive_bayes)
+  
+  n_workers_available <- parallel::detectCores()
+  plan(multisession, workers = n_workers_available - 2)
+  
+  l_loo_gaussian <- furrr::future_map2(
+    l_tbl_both, l_tbl_both_agg, safe_gaussian, 
+    l_stan_params = l_stan_params,
+    mod_gaussian = mod_gaussian, 
+    .progress = TRUE
+  )
+  plan("sequential")
+  saveRDS(l_loo_gaussian, file = "data/infpro_task-cat_beh/gaussian-loos.RDS")
+  
+} else {
+  l_loo_gaussian <- readRDS(file = "data/infpro_task-cat_beh/gaussian-loos.RDS")
+}
 
 # ok
 l_gaussian_results <- map(l_loo_gaussian, "result")
@@ -278,21 +308,21 @@ map(l_summary_gcm, ~ .x[str_starts(.x$variable, "b|c"), ]) %>%
   facet_wrap(~ variable, scales = "free") +
   theme_bw() +
   labs(
-    x = "Mean Parameter",
+    x = "MAP",
     y = "Nr. Participants"
   )
 
 # prototype
 l_summary_prototype <- map(path_summary[[2]], readRDS)
 # participants have a response bias for categories 1 and 2 (i.e., the target categories)
-map(l_summary_prototype, ~ .x[str_starts(.x$variable, "b|c"), ]) %>%
+map(l_summary_prototype, ~ .x[str_starts(.x$variable, "mu|sigma|c"), ]) %>%
   reduce(rbind) %>%
   ggplot(aes(mean)) +
   geom_histogram(fill = "#66CCFF", color = "white") +
-  facet_wrap(~ variable, scales = "free") +
+  facet_wrap(~ variable, scales = "free", ncol = 3) +
   theme_bw() +
   labs(
-    x = "Mean Parameter",
+    x = "MAP",
     y = "Nr. Participants"
   )
 
@@ -342,7 +372,7 @@ pl <- ggplot(tbl_all, aes(x, y, group = category)) +
     y = "Belly Size"
   )
 ggExtra::ggMarginal(pl, groupFill = TRUE, type = "histogram")
-saveRDS(tbl_all, file = "data/infpro_task-cat_beh/1d-participant-posterior-means.rds")
+saveRDS(tbl_all, file = "data/infpro_task-cat_beh/gaussian-participant-maps.rds")
 
 
 map(l_loo_weights, "result") %>% reduce(rbind) %>%
@@ -373,6 +403,7 @@ tbl_biases %>%
   geom_histogram(fill = "#66CCFF", color = "white") +
   theme_bw()
 
+# biases correspond between models
 tbl_biases %>% 
   pivot_wider(id_cols = c(participant, variable), names_from = model, values_from = mean) %>%
   ggplot(aes(Gaussian, GCM)) +
