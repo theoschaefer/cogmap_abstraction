@@ -23,3 +23,5 @@ There is a flag called is_saved, which can be set to TRUE or FALSE. If set to FA
 ### Comparing Predictions of the Two Categorization Models for the Feature Inference Task
 
 Run the file R/scripts/feature-inference.R
+
+It generates a lookup table with distance values for both gaussian prototype and GCM exemplar models which can be converted to prototype and exemplar proximity values for the behavioral analysis.
