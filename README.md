@@ -18,8 +18,6 @@ Download the files called "infpro_task-cat_beh" and "infpro_task-cat2_beh", whic
 
 Run the file R/scripts/fit-all-participants-infpro.R
 
-There is a flag called is_saved, which can be set to TRUE or FALSE. If set to FALSE, the models are fitted and the results are saved. When re-running the script on the same machine, you can set is_saved = TRUE, and the saved results are used.
-
 ### Comparing Predictions of the Two Categorization Models for the Feature Inference Task
 
 Run the file R/scripts/feature-inference.R
