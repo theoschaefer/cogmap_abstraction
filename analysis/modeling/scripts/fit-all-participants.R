@@ -9,25 +9,31 @@ library(gridExtra)
 library(furrr)
 library(loo)
 
-utils_loc <- c("R/utils/plotting-utils.R", "R/utils/utils.R")
+# Root path
+path_root = dirname(dirname(rstudioapi::getSourceEditorContext()$path))
+
+utils_loc <- c(paste0(path_root,"/utils/plotting-utils.R"), 
+               paste0(path_root,"/utils/utils.R"))
 walk(utils_loc, source)
 
-if (!dir.exists("data/")) dir.create("data/")
-if (!dir.exists("data/infpro_task-cat_beh/")) dir.create("data/infpro_task-cat_beh/")
-if (!dir.exists("data/infpro_task-cat_beh/models/")) dir.create("data/infpro_task-cat_beh/models/")
-if (!dir.exists("data/infpro_task-cat_beh/model-plots/")) dir.create("data/infpro_task-cat_beh/model-plots/")
-if (!dir.exists("data/infpro_task-cat_beh/figures/")) dir.create("data/infpro_task-cat_beh/figures/")
+if (!dir.exists(paste0(path_root,"/data/"))) dir.create(paste0(path_root,"/data/"))
+if (!dir.exists(paste0(path_root,"/data/infpro_task-cat_beh/"))) dir.create(paste0(path_root,"/data/infpro_task-cat_beh/"))
+if (!dir.exists(paste0(path_root,"/data/infpro_task-cat_beh/models/"))) dir.create(paste0(path_root,"/data/infpro_task-cat_beh/models/"))
+if (!dir.exists(paste0(path_root,"/data/infpro_task-cat_beh/model-plots/"))) dir.create(paste0(path_root,"/data/infpro_task-cat_beh/model-plots/"))
+if (!dir.exists(paste0(path_root,"/data/infpro_task-cat_beh/figures/"))) dir.create(paste0(path_root,"/data/infpro_task-cat_beh/figures/"))
 
+is_saved <- FALSE
 
 # Load Data and Preprocess Them -------------------------------------------
 
-file_loc_train <- "data/infpro_task-cat_beh/infpro_task-cat_beh.csv"
-file_loc_transfer <- "data/infpro_task-cat_beh/infpro_task-cat2_beh.csv"
+# Copy this file from data repository: /behavior/behavior-categorisation-train_data.csv
+file_loc_train <- paste0(path_root,"/data/behavior-categorisation-train_data.csv")
+# Copy this file from data repository: /behavior/behavior-categorisation-transfer_data.csv
+file_loc_transfer <- paste0(path_root,"/data/behavior-categorisation-transfer_data.csv")
 # tbl_train <- read_csv(file_loc_train, show_col_types = FALSE)
 # tbl_transfer <- read_csv(file_loc_transfer, show_col_types = FALSE)
 tbl_train <- read_csv(file_loc_train)
 tbl_transfer <- read_csv(file_loc_transfer)
-colnames(tbl_transfer) <- str_replace(colnames(tbl_transfer), "cat2", "cat")
 tbl_train$session <- "train"
 tbl_transfer$session <- "transfer"
 
@@ -53,8 +59,9 @@ sd_d2i <- sd(tbl_both$d2i)
 tbl_train <- tbl_both %>% filter(session == "train")
 tbl_transfer <- tbl_both %>% filter(session == "transfer")
 
+setwd(path_root)
 if (!is_saved) {
-  
+
   # save train, transfer, and combined data as rds and csv
   saveRDS(tbl_both, file = "data/infpro_task-cat_beh/tbl_both.RDS")
   saveRDS(tbl_train, file = "data/infpro_task-cat_beh/tbl_train.RDS")

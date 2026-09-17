@@ -7,12 +7,17 @@ library(gridExtra)
 library(furrr)
 library(loo)
 
-utils_loc <- c("R/utils/plotting-utils.R", "R/utils/utils.R")
+# Root path
+path_root = dirname(dirname(rstudioapi::getSourceEditorContext()$path))
+
+utils_loc <- c(paste0(path_root,"/utils/plotting-utils.R"), 
+               paste0(path_root,"/utils/utils.R"))
 walk(utils_loc, source)
 
 
 # Load Data and Preprocess Them -------------------------------------------
 
+setwd(path_root)
 tbl_both <- readRDS(file = "data/infpro_task-cat_beh/tbl_both.RDS")
 tbl_train <- readRDS(file = "data/infpro_task-cat_beh/tbl_train.RDS")
 tbl_transfer <- readRDS(file = "data/infpro_task-cat_beh/tbl_transfer.RDS")
@@ -39,13 +44,6 @@ m_gcm <- readRDS(file_loc_gcm)
 m_pt <- readRDS(file_loc_gaussian)
 post_c <- m_gcm$draws(variables = "c", format = "df") %>% as_tibble()
 post_pts <- m_pt$draws(variables = c("mu1", "mu2"), format = "df")
-
-
-tbl_train %>% group_by(participant, d1i, d2i, category) %>%
-  count()
-# all category A and category B stimuli were seen 17 times during training
-# we can therefore use all distinct category exemplars only once
-# when computing similarities towards within-category exemplars as 17 cancels out
 
 # all the exemplars observed during training that can be referred to in memory
 l_tbl_exemplars <- tbl_train %>% 
