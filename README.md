@@ -5,3 +5,5 @@ This repository contains analysis code for the manuscript "The hippocampus suppo
 DOI: available upon publication
 
 Data is available at Zenodo (https://doi.org/10.5281/zenodo.22809082)
+
+Code is licensed under the MIT License (see the LICENSE.txt file)
